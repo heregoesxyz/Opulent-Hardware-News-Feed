@@ -20,6 +20,7 @@
       color: var(--text);
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       min-height: 100vh;
+      overflow-y: scroll;
     }
     header {
       position: sticky;
@@ -93,14 +94,14 @@
       letter-spacing: .09em;
       color: var(--muted);
     }
-    .headline, .title-link {
+    .title-link {
       font-weight: 600;
       font-size: .9rem;
       line-height: 1.25;
       color: inherit;
       text-decoration: none;
     }
-    .headline:hover, .title-link:hover { text-decoration: underline; }
+    .title-link:hover { text-decoration: underline; }
     .desc {
       font-size: .72rem;
       color: var(--muted);
@@ -142,6 +143,26 @@
       width: 100%;
       margin-top: .25rem;
     }
+
+    /* 🖤 Subtle dark scrollbar (Xeneon Edge friendly) */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.08) transparent;
+    }
   </style>
 </head>
 <body>
@@ -163,24 +184,21 @@
   <button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">Top</button>
 
   <script>
-    // feeds
+    // Feed URLs
     const NEWS_FEED = "https://feeds.bbci.co.uk/news/rss.xml";
-
-    // yahoo finance RSS per ticker
     const MARKET_FEEDS = [
       { name: "AAPL", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US" },
       { name: "NVDA", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US" },
       { name: "TSLA", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US" }
     ];
-
-    // 3-5 podcasts
     const PODCAST_FEEDS = [
       { name: "NPR Planet Money", url: "https://feeds.npr.org/510289/podcast.xml" },
-      { name: "TED Talks Daily", url: "https://feeds.feedburner.com/tedtalks_audio" },
-      { name: "Lex Fridman", url: "https://lexfridman.com/feed/podcast/" },
-      { name: "99% Invisible", url: "https://feeds.99percentinvisible.org/99pi" }
+      { name: "NPR Up First", url: "https://feeds.npr.org/510318/podcast.xml" },
+      { name: "NPR Consider This", url: "https://feeds.npr.org/510355/podcast.xml" },
+      { name: "NPR How I Built This", url: "https://feeds.npr.org/510313/podcast.xml" }
     ];
 
+    // Proxy rotation
     const proxies = [
       (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
       (url) => `https://cors.isomorphic-git.org/${url}`
@@ -189,7 +207,6 @@
     const feedEl = document.getElementById('feed');
     const tabsEl = document.getElementById('tabs');
     const filterInput = document.getElementById('filterInput');
-
     let currentTab = 'news';
     let currentItems = [];
 
@@ -198,13 +215,12 @@
         try {
           const r = await fetch(wrap(url));
           if (!r.ok) throw new Error('bad status');
-          const t = await r.text();
-          return t;
+          return await r.text();
         } catch (e) {
-          console.warn('proxy failed, trying next...', e);
+          console.warn('proxy failed', url, e);
         }
       }
-      throw new Error('all proxies failed');
+      throw new Error('all proxies failed for ' + url);
     }
 
     async function loadNews() {
@@ -248,7 +264,6 @@
           console.warn('market feed failed', mf.name, err);
         }
       }
-      // maybe sort by date desc if present
       all.sort((a, b) => (new Date(b.date)) - (new Date(a.date)));
       currentItems = all;
       renderItems();
@@ -262,10 +277,8 @@
           const text = await fetchWithProxies(pf.url);
           const parser = new DOMParser();
           const xml = parser.parseFromString(text, "application/xml");
-          // take latest ~5 per feed
           const items = Array.from(xml.querySelectorAll('item')).slice(0,5).map(item => {
-            const enclosure = item.querySelector('enclosure');
-            const audioUrl = enclosure ? enclosure.getAttribute('url') : '';
+            const audioUrl = extractAudio(item);
             return {
               source: pf.name,
               title: item.querySelector('title')?.textContent?.trim() || '',
@@ -280,10 +293,21 @@
           console.warn('podcast feed failed', pf.name, err);
         }
       }
-      // newest first
       all.sort((a, b) => (new Date(b.date)) - (new Date(a.date)));
       currentItems = all;
       renderItems(true);
+    }
+
+    function extractAudio(item) {
+      const enclosure = item.querySelector('enclosure');
+      if (enclosure && enclosure.getAttribute('url')) {
+        return enclosure.getAttribute('url');
+      }
+      const media = item.getElementsByTagName('media:content')[0];
+      if (media && media.getAttribute('url')) {
+        return media.getAttribute('url');
+      }
+      return '';
     }
 
     function cleanDesc(str) {
@@ -323,7 +347,6 @@
       });
     }
 
-    // tab clicks
     tabsEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
@@ -335,12 +358,10 @@
       if (currentTab === 'podcasts') loadPodcasts();
     });
 
-    // filter
     filterInput.addEventListener('input', () => {
       renderItems(currentTab === 'podcasts');
     });
 
-    // initial
     loadNews();
   </script>
 </body>
