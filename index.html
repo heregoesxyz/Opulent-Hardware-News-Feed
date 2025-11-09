@@ -127,6 +127,17 @@
       background: linear-gradient(to top, #000 0%, rgba(0,0,0,0) 100%);
       z-index: 5;
     }
+    /* right edge fade to hide scrollbar edge */
+    .fade-right {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 46px;
+      height: 100%;
+      background: linear-gradient(to left, #000 0%, rgba(0,0,0,0) 100%);
+      z-index: 6;
+    }
     .to-top {
       position: fixed;
       bottom: 1.1rem;
@@ -144,24 +155,32 @@
       margin-top: .25rem;
     }
 
-    /* 🖤 Subtle dark scrollbar (Xeneon Edge friendly) */
+    /* 🖤 Subtle dark scrollbar — Peels/XE style */
     ::-webkit-scrollbar {
-      width: 10px;
-      height: 10px;
+      width: 12px;
+      height: 12px;
     }
     ::-webkit-scrollbar-track {
       background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
       border-radius: 999px;
+      border: 2px solid #000;
+      box-shadow: inset 0 0 6px rgba(0,0,0,0.6);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 0 6px rgba(0,0,0,0.9);
     }
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    /* Firefox */
     * {
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.08) transparent;
+      scrollbar-color: rgba(255,255,255,0.03) transparent;
     }
   </style>
 </head>
@@ -181,6 +200,7 @@
   <main id="feed"></main>
 
   <div class="fade-bottom"></div>
+  <div class="fade-right"></div>
   <button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">Top</button>
 
   <script>
@@ -198,7 +218,7 @@
       { name: "NPR How I Built This", url: "https://feeds.npr.org/510313/podcast.xml" }
     ];
 
-    // Proxy rotation
+    // CORS proxy rotation
     const proxies = [
       (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
       (url) => `https://cors.isomorphic-git.org/${url}`
@@ -347,6 +367,7 @@
       });
     }
 
+    // tab clicks
     tabsEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.tab-btn');
       if (!btn) return;
@@ -358,10 +379,12 @@
       if (currentTab === 'podcasts') loadPodcasts();
     });
 
+    // filter
     filterInput.addEventListener('input', () => {
       renderItems(currentTab === 'podcasts');
     });
 
+    // initial load
     loadNews();
   </script>
 </body>
