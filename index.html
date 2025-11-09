@@ -177,26 +177,41 @@
     let currentFeedUrl = 'https://feeds.bbci.co.uk/news/rss.xml';
     let currentItems = [];
 
+    // we'll try allorigins first, then fallback to another
+    const proxies = [
+      (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      (url) => `https://cors.isomorphic-git.org/${url}`
+    ];
+
     async function loadFeed(url) {
       feedEl.innerHTML = '<div class="empty">Loading…</div>';
-      try {
-        const res = await fetch(url);
-        const text = await res.text();
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(text, "application/xml");
-        const items = Array.from(xml.querySelectorAll('item'));
-        currentItems = items.map(item => {
-          return {
-            title: item.querySelector('title')?.textContent?.trim() || '',
-            link: item.querySelector('link')?.textContent?.trim() || '#',
-            desc: item.querySelector('description')?.textContent?.trim().replace(/<!\[CDATA\[|\]\]>/g,'') || '',
-            pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
-            source: detectSource(url)
-          };
-        });
-        renderItems(currentItems);
-      } catch (err) {
-        console.error(err);
+      let success = false;
+      for (const wrap of proxies) {
+        try {
+          const proxied = wrap(url);
+          const res = await fetch(proxied);
+          if (!res.ok) throw new Error('bad status');
+          const text = await res.text();
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(text, "application/xml");
+          const items = Array.from(xml.querySelectorAll('item'));
+          currentItems = items.map(item => {
+            return {
+              title: item.querySelector('title')?.textContent?.trim() || '',
+              link: item.querySelector('link')?.textContent?.trim() || '#',
+              desc: item.querySelector('description')?.textContent?.trim().replace(/<!\[CDATA\[|\]\]>/g,'') || '',
+              pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
+              source: detectSource(url)
+            };
+          });
+          renderItems(currentItems);
+          success = true;
+          break;
+        } catch (err) {
+          console.warn('proxy failed, trying next...', err);
+        }
+      }
+      if (!success) {
         feedEl.innerHTML = '<div class="empty">Could not load feed.</div>';
       }
     }
