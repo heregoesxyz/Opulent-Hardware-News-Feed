@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>Opulent Hardware — RSS News Feed</title>
+  <title>Opulent Hardware — Multi Feed</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
@@ -12,8 +12,6 @@
       --text: #f2f6ff;
       --accent: #b6ff3b;
       --border: rgba(255,255,255,.04);
-      --bad: #ff6b6b;
-      --good: #7dff76;
     }
     * { box-sizing: border-box; }
     body {
@@ -26,17 +24,11 @@
     header {
       position: sticky;
       top: 0;
-      z-index: 40;
+      z-index: 20;
       background: rgba(0,0,0,.6);
       backdrop-filter: blur(16px);
       border-bottom: 1px solid rgba(255,255,255,.03);
-      padding: .75rem 1rem .4rem;
-    }
-    .top-row {
-      display: flex;
-      gap: 1rem;
-      justify-content: space-between;
-      align-items: center;
+      padding: .75rem 1rem .5rem;
     }
     .title {
       font-size: 1.05rem;
@@ -44,30 +36,12 @@
       letter-spacing: .06em;
       text-transform: uppercase;
     }
-    .status {
-      font-size: .65rem;
-      color: var(--muted);
-      text-align: right;
-    }
-    .status span {
-      display: inline-block;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.04);
-      border-radius: .4rem;
-      padding: .1rem .4rem;
-      margin-left: .25rem;
-    }
-    .status .ok { color: var(--good); border-color: rgba(125,255,118,.3); }
-    .status .fail { color: var(--bad); border-color: rgba(255,107,107,.3); }
-
-    .feed-picker {
+    .tabs {
+      margin-top: .6rem;
       display: flex;
       gap: .5rem;
-      margin-top: .6rem;
-      overflow-x: auto;
-      padding-bottom: .35rem;
     }
-    .feed-btn {
+    .tab-btn {
       background: rgba(255,255,255,.03);
       border: 1px solid transparent;
       border-radius: 999px;
@@ -76,10 +50,9 @@
       text-transform: uppercase;
       letter-spacing: .03em;
       cursor: pointer;
-      white-space: nowrap;
       color: var(--muted);
     }
-    .feed-btn.active {
+    .tab-btn.active {
       border-color: rgba(182,255,59,1);
       color: var(--text);
     }
@@ -111,8 +84,8 @@
       padding: .7rem .8rem .85rem;
       display: flex;
       flex-direction: column;
-      gap: .45rem;
-      min-height: 180px;
+      gap: .4rem;
+      min-height: 140px;
     }
     .source {
       font-size: .6rem;
@@ -120,14 +93,14 @@
       letter-spacing: .09em;
       color: var(--muted);
     }
-    .title-link {
+    .headline, .title-link {
       font-weight: 600;
       font-size: .9rem;
       line-height: 1.25;
       color: inherit;
       text-decoration: none;
     }
-    .title-link:hover { text-decoration: underline; }
+    .headline:hover, .title-link:hover { text-decoration: underline; }
     .desc {
       font-size: .72rem;
       color: var(--muted);
@@ -136,6 +109,12 @@
       font-size: .6rem;
       color: rgba(242,246,255,.35);
       margin-top: auto;
+    }
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 2rem 0;
+      color: var(--muted);
     }
     .fade-bottom {
       pointer-events: none;
@@ -159,24 +138,19 @@
       cursor: pointer;
       font-size: .7rem;
     }
-    .empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 2rem 0;
-      color: var(--muted);
+    audio {
+      width: 100%;
+      margin-top: .25rem;
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="top-row">
-      <div class="title">OPULENT HARDWARE — RSS NEWS</div>
-      <div class="status" id="status">Proxy: <span>loading…</span></div>
-    </div>
-    <div class="feed-picker" id="feedPicker">
-      <button class="feed-btn active" data-url="https://feeds.bbci.co.uk/news/rss.xml">BBC News</button>
-      <button class="feed-btn" data-url="https://feedx.net/rss/ap.xml">Associated Press (feedx)</button>
-      <button class="feed-btn" data-url="https://feeds.npr.org/1001/rss.xml">NPR Top Stories</button>
+    <div class="title">OPULENT HARDWARE — MULTI FEED</div>
+    <div class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="news">BBC News</button>
+      <button class="tab-btn" data-tab="market">Yahoo Finance</button>
+      <button class="tab-btn" data-tab="podcasts">Podcasts</button>
     </div>
     <div class="searchbar">
       <input id="filterInput" placeholder="Filter results by keyword…">
@@ -189,86 +163,142 @@
   <button class="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">Top</button>
 
   <script>
-    const feedEl = document.getElementById('feed');
-    const feedPicker = document.getElementById('feedPicker');
-    const filterInput = document.getElementById('filterInput');
-    const statusEl = document.getElementById('status');
+    // feeds
+    const NEWS_FEED = "https://feeds.bbci.co.uk/news/rss.xml";
 
-    // 3 proxy options — we’ll try in order
-    const proxies = [
-      {
-        name: 'allorigins',
-        wrap: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-      },
-      {
-        name: 'codetabs',
-        wrap: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
-      },
-      {
-        name: 'isomorphic',
-        wrap: (url) => `https://cors.isomorphic-git.org/${url}`
-      }
+    // yahoo finance RSS per ticker
+    const MARKET_FEEDS = [
+      { name: "AAPL", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AAPL&region=US&lang=en-US" },
+      { name: "NVDA", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US" },
+      { name: "TSLA", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US" }
     ];
 
-    let currentFeedUrl = 'https://feeds.bbci.co.uk/news/rss.xml';
+    // 3-5 podcasts
+    const PODCAST_FEEDS = [
+      { name: "NPR Planet Money", url: "https://feeds.npr.org/510289/podcast.xml" },
+      { name: "TED Talks Daily", url: "https://feeds.feedburner.com/tedtalks_audio" },
+      { name: "Lex Fridman", url: "https://lexfridman.com/feed/podcast/" },
+      { name: "99% Invisible", url: "https://feeds.99percentinvisible.org/99pi" }
+    ];
+
+    const proxies = [
+      (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      (url) => `https://cors.isomorphic-git.org/${url}`
+    ];
+
+    const feedEl = document.getElementById('feed');
+    const tabsEl = document.getElementById('tabs');
+    const filterInput = document.getElementById('filterInput');
+
+    let currentTab = 'news';
     let currentItems = [];
 
-    function setStatus(msg, ok = false, proxyName = '') {
-      statusEl.innerHTML = `Proxy: <span class="${ok ? 'ok' : 'fail'}">${proxyName ? proxyName + ': ' : ''}${msg}</span>`;
-    }
-
-    async function loadFeed(url) {
-      feedEl.innerHTML = '<div class="empty">Loading…</div>';
-      let loaded = false;
-
-      for (const proxy of proxies) {
-        const proxiedUrl = proxy.wrap(url);
+    async function fetchWithProxies(url) {
+      for (const wrap of proxies) {
         try {
-          setStatus('fetching…', false, proxy.name);
-          const res = await fetch(proxiedUrl);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          const text = await res.text();
-          // parse XML
-          const parser = new DOMParser();
-          const xml = parser.parseFromString(text, "application/xml");
-          const items = Array.from(xml.querySelectorAll('item'));
-          currentItems = items.map(item => {
-            return {
-              title: item.querySelector('title')?.textContent?.trim() || '',
-              link: item.querySelector('link')?.textContent?.trim() || '#',
-              desc: item.querySelector('description')?.textContent?.trim().replace(/<!\[CDATA\[|\]\]>/g,'') || '',
-              pubDate: item.querySelector('pubDate')?.textContent?.trim() || '',
-              source: detectSource(url)
-            };
-          });
-          renderItems(currentItems);
-          setStatus('ok', true, proxy.name);
-          loaded = true;
-          break;
-        } catch (err) {
-          console.warn('proxy failed', proxy.name, err);
-          setStatus('failed', false, proxy.name);
-          // try next
+          const r = await fetch(wrap(url));
+          if (!r.ok) throw new Error('bad status');
+          const t = await r.text();
+          return t;
+        } catch (e) {
+          console.warn('proxy failed, trying next...', e);
         }
       }
+      throw new Error('all proxies failed');
+    }
 
-      if (!loaded) {
-        feedEl.innerHTML = '<div class="empty">Could not load feed (all proxies failed).</div>';
+    async function loadNews() {
+      feedEl.innerHTML = '<div class="empty">Loading BBC news…</div>';
+      try {
+        const text = await fetchWithProxies(NEWS_FEED);
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(text, "application/xml");
+        const items = Array.from(xml.querySelectorAll('item')).map(item => ({
+          source: 'BBC News',
+          title: item.querySelector('title')?.textContent?.trim() || '',
+          desc: cleanDesc(item.querySelector('description')?.textContent || ''),
+          link: item.querySelector('link')?.textContent?.trim() || '#',
+          date: item.querySelector('pubDate')?.textContent?.trim() || ''
+        }));
+        currentItems = items;
+        renderItems();
+      } catch (err) {
+        console.error(err);
+        feedEl.innerHTML = '<div class="empty">Could not load BBC.</div>';
       }
     }
 
-    function detectSource(url) {
-      if (url.includes('bbci.co.uk')) return 'BBC News';
-      if (url.includes('feedx.net')) return 'Associated Press';
-      if (url.includes('npr.org')) return 'NPR';
-      return 'News';
+    async function loadMarket() {
+      feedEl.innerHTML = '<div class="empty">Loading market headlines…</div>';
+      const all = [];
+      for (const mf of MARKET_FEEDS) {
+        try {
+          const text = await fetchWithProxies(mf.url);
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(text, "application/xml");
+          const items = Array.from(xml.querySelectorAll('item')).map(item => ({
+            source: `Yahoo Finance — ${mf.name}`,
+            title: item.querySelector('title')?.textContent?.trim() || '',
+            desc: cleanDesc(item.querySelector('description')?.textContent || ''),
+            link: item.querySelector('link')?.textContent?.trim() || '#',
+            date: item.querySelector('pubDate')?.textContent?.trim() || ''
+          }));
+          all.push(...items);
+        } catch (err) {
+          console.warn('market feed failed', mf.name, err);
+        }
+      }
+      // maybe sort by date desc if present
+      all.sort((a, b) => (new Date(b.date)) - (new Date(a.date)));
+      currentItems = all;
+      renderItems();
     }
 
-    function renderItems(items) {
+    async function loadPodcasts() {
+      feedEl.innerHTML = '<div class="empty">Loading podcasts…</div>';
+      const all = [];
+      for (const pf of PODCAST_FEEDS) {
+        try {
+          const text = await fetchWithProxies(pf.url);
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(text, "application/xml");
+          // take latest ~5 per feed
+          const items = Array.from(xml.querySelectorAll('item')).slice(0,5).map(item => {
+            const enclosure = item.querySelector('enclosure');
+            const audioUrl = enclosure ? enclosure.getAttribute('url') : '';
+            return {
+              source: pf.name,
+              title: item.querySelector('title')?.textContent?.trim() || '',
+              desc: cleanDesc(item.querySelector('description')?.textContent || ''),
+              link: item.querySelector('link')?.textContent?.trim() || '#',
+              date: item.querySelector('pubDate')?.textContent?.trim() || '',
+              audio: audioUrl
+            };
+          });
+          all.push(...items);
+        } catch (err) {
+          console.warn('podcast feed failed', pf.name, err);
+        }
+      }
+      // newest first
+      all.sort((a, b) => (new Date(b.date)) - (new Date(a.date)));
+      currentItems = all;
+      renderItems(true);
+    }
+
+    function cleanDesc(str) {
+      return str.replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]*>/g,'').trim();
+    }
+
+    function renderItems(isPodcast = false) {
       const q = filterInput.value.trim().toLowerCase();
       const filtered = q
-        ? items.filter(it => it.title.toLowerCase().includes(q) || it.desc.toLowerCase().includes(q))
-        : items;
+        ? currentItems.filter(it =>
+            it.title.toLowerCase().includes(q) ||
+            it.desc.toLowerCase().includes(q) ||
+            it.source.toLowerCase().includes(q)
+          )
+        : currentItems;
       if (!filtered.length) {
         feedEl.innerHTML = '<div class="empty">No results for this filter.</div>';
         return;
@@ -281,29 +311,37 @@
           <div class="source">${it.source}</div>
           <a class="title-link" href="${it.link}" target="_blank" rel="noopener noreferrer">${it.title}</a>
           <div class="desc">${it.desc}</div>
-          <div class="date">${it.pubDate ? new Date(it.pubDate).toLocaleString() : ''}</div>
+          <div class="date">${it.date ? new Date(it.date).toLocaleString() : ''}</div>
         `;
+        if (isPodcast && it.audio) {
+          const audio = document.createElement('audio');
+          audio.controls = true;
+          audio.src = it.audio;
+          card.appendChild(audio);
+        }
         feedEl.appendChild(card);
       });
     }
 
-    // feed picker
-    feedPicker.addEventListener('click', (e) => {
-      const btn = e.target.closest('.feed-btn');
+    // tab clicks
+    tabsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
       if (!btn) return;
-      document.querySelectorAll('.feed-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      currentFeedUrl = btn.dataset.url;
-      loadFeed(currentFeedUrl);
+      currentTab = btn.dataset.tab;
+      if (currentTab === 'news') loadNews();
+      if (currentTab === 'market') loadMarket();
+      if (currentTab === 'podcasts') loadPodcasts();
     });
 
     // filter
     filterInput.addEventListener('input', () => {
-      renderItems(currentItems);
+      renderItems(currentTab === 'podcasts');
     });
 
-    // initial load
-    loadFeed(currentFeedUrl);
+    // initial
+    loadNews();
   </script>
 </body>
 </html>
