@@ -12,6 +12,8 @@
       --text: #f2f6ff;
       --accent: #b6ff3b;
       --border: rgba(255,255,255,.04);
+      --bad: #ff6b6b;
+      --good: #7dff76;
     }
     * { box-sizing: border-box; }
     body {
@@ -24,11 +26,11 @@
     header {
       position: sticky;
       top: 0;
-      z-index: 20;
+      z-index: 40;
       background: rgba(0,0,0,.6);
       backdrop-filter: blur(16px);
       border-bottom: 1px solid rgba(255,255,255,.03);
-      padding: .75rem 1rem .5rem;
+      padding: .75rem 1rem .4rem;
     }
     .top-row {
       display: flex;
@@ -42,6 +44,22 @@
       letter-spacing: .06em;
       text-transform: uppercase;
     }
+    .status {
+      font-size: .65rem;
+      color: var(--muted);
+      text-align: right;
+    }
+    .status span {
+      display: inline-block;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.04);
+      border-radius: .4rem;
+      padding: .1rem .4rem;
+      margin-left: .25rem;
+    }
+    .status .ok { color: var(--good); border-color: rgba(125,255,118,.3); }
+    .status .fail { color: var(--bad); border-color: rgba(255,107,107,.3); }
+
     .feed-picker {
       display: flex;
       gap: .5rem;
@@ -66,7 +84,7 @@
       color: var(--text);
     }
     .searchbar {
-      margin-top: .6rem;
+      margin-top: .5rem;
       display: flex;
       gap: .5rem;
     }
@@ -153,6 +171,7 @@
   <header>
     <div class="top-row">
       <div class="title">OPULENT HARDWARE — RSS NEWS</div>
+      <div class="status" id="status">Proxy: <span>loading…</span></div>
     </div>
     <div class="feed-picker" id="feedPicker">
       <button class="feed-btn active" data-url="https://feeds.bbci.co.uk/news/rss.xml">BBC News</button>
@@ -173,25 +192,43 @@
     const feedEl = document.getElementById('feed');
     const feedPicker = document.getElementById('feedPicker');
     const filterInput = document.getElementById('filterInput');
+    const statusEl = document.getElementById('status');
+
+    // 3 proxy options — we’ll try in order
+    const proxies = [
+      {
+        name: 'allorigins',
+        wrap: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+      },
+      {
+        name: 'codetabs',
+        wrap: (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+      },
+      {
+        name: 'isomorphic',
+        wrap: (url) => `https://cors.isomorphic-git.org/${url}`
+      }
+    ];
 
     let currentFeedUrl = 'https://feeds.bbci.co.uk/news/rss.xml';
     let currentItems = [];
 
-    // we'll try allorigins first, then fallback to another
-    const proxies = [
-      (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-      (url) => `https://cors.isomorphic-git.org/${url}`
-    ];
+    function setStatus(msg, ok = false, proxyName = '') {
+      statusEl.innerHTML = `Proxy: <span class="${ok ? 'ok' : 'fail'}">${proxyName ? proxyName + ': ' : ''}${msg}</span>`;
+    }
 
     async function loadFeed(url) {
       feedEl.innerHTML = '<div class="empty">Loading…</div>';
-      let success = false;
-      for (const wrap of proxies) {
+      let loaded = false;
+
+      for (const proxy of proxies) {
+        const proxiedUrl = proxy.wrap(url);
         try {
-          const proxied = wrap(url);
-          const res = await fetch(proxied);
-          if (!res.ok) throw new Error('bad status');
+          setStatus('fetching…', false, proxy.name);
+          const res = await fetch(proxiedUrl);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
           const text = await res.text();
+          // parse XML
           const parser = new DOMParser();
           const xml = parser.parseFromString(text, "application/xml");
           const items = Array.from(xml.querySelectorAll('item'));
@@ -205,14 +242,18 @@
             };
           });
           renderItems(currentItems);
-          success = true;
+          setStatus('ok', true, proxy.name);
+          loaded = true;
           break;
         } catch (err) {
-          console.warn('proxy failed, trying next...', err);
+          console.warn('proxy failed', proxy.name, err);
+          setStatus('failed', false, proxy.name);
+          // try next
         }
       }
-      if (!success) {
-        feedEl.innerHTML = '<div class="empty">Could not load feed.</div>';
+
+      if (!loaded) {
+        feedEl.innerHTML = '<div class="empty">Could not load feed (all proxies failed).</div>';
       }
     }
 
